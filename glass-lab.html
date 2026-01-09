@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluted Glass Lab</title>
+    <link rel="stylesheet" href="physics-fluted-glass.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000000;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Toggle Container */
+        .toggle-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 25px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .toggle-btn {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .toggle-btn.active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.6);
+            transform: scale(1.05);
+        }
+
+        .toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Glass Component Container */
+        .glass-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 95%;
+            max-width: 900px;
+            padding: 50px;
+            z-index: 100;
+            display: flex;
+            gap: 0px;
+            pointer-events: none;
+        }
+
+        /* Glass Slits Container */
+        .glass-content {
+            z-index: 1;
+            display: flex;
+            gap: 0px;
+            align-items: center;
+            pointer-events: auto;
+        }
+
+        /* Individual Glass Slit */
+        .glass-slit {
+            position: relative;
+            width: 16px;
+            height: 200px;
+            border-radius: 0px;
+            background: hsl(0deg 0% 100% / 0);
+            backdrop-filter: blur(16px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            transition: none;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .glass-slit.picked {
+            opacity: 0.5;
+            transform: scale(0.95);
+            cursor: grabbing;
+        }
+
+        /* Reflective Left Edge */
+        .glass-slit::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            height: 100%;
+            background: 
+                linear-gradient(120deg, 
+                    rgba(255,255,255,0.45) 10%, 
+                    rgba(255,255,255,0.0) 30%),
+                linear-gradient(to bottom, 
+                    rgba(255,255,255,0.35), 
+                    rgba(255,255,255,0) 40%),
+                hsl(0deg 0% 100% / 0.12);
+            border-radius: 4px;
+            position: absolute;
+            inset: 0;
+            z-index: 101;
+            pointer-events: none;
+        }
+
+        .glass-slit::after {
+            background: 
+                radial-gradient(
+                    circle at 20% 10%, 
+                    rgba(255,255,255,0.3), 
+                    transparent 60%
+                ),
+                hsl(0deg 0% 100% / 0.12);
+            border-radius: 4px;
+            position: absolute;
+            inset: 0;
+            z-index: 102;
+            pointer-events: none;
+        }
+
+        /* Controls Panel */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            gap: 15px;
+            z-index: 20;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            color: #ffffff;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .control-group input {
+            width: 100px;
+            padding: 5px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            border-radius: 5px;
+        }
+
+        .control-group input[type="range"] {
+            width: 150px;
+        }
+
+        /* Image Carousel Container */
+        .carousel-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 900px;
+            height: 400px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1;
+        }
+
+        .carousel-item {
+            position: absolute;
+            width: 900px;
+            height: 400px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+            pointer-events: none;
+            padding: 20px;    /* Add padding to each item */
+        }
+
+        .carousel-item.active {
+            opacity: 1;
+        }
+
+        .carousel-item img {
+            width: 300px;    /* Cropped to individual image size */
+            height: 400px;   /* Same height as container */
+            object-fit: cover;
+            border-radius: 24px;
+        }
+
+        /* Multiple Image Layers for Lens Refraction */
+        .base-layer {
+            position: absolute;
+            top: 0;
+            z-index: 1;
+            opacity: 1;     /* Ensure base layer is always visible */
+        }
+
+        .refraction-layer-1 {
+            position: absolute;
+            top: 0;
+            z-index: 2;
+            opacity: 0.3;
+            filter: blur(2px);    /* Add blur for distortion at ridges */
+            transition: none;     /* Remove transition for instant on/off */
+        }
+
+        .refraction-layer-2 {
+            position: absolute;
+            top: 0;
+            z-index: 3;
+            opacity: 0.3;
+            filter: blur(2px);    /* Add blur for distortion at ridges */
+            transition: none;     /* Remove transition for instant on/off */
+        }
+
+        /* Position individual images side by side */
+        .carousel-item:nth-child(4) { left: -275px; }    /* hyp1 refraction 1 - moved further left */
+        .carousel-item:nth-child(1) { left: -290px; }    /* hyp1 - moved further left */
+        .carousel-item:nth-child(7) { left: -305px; }    /* hyp1 refraction 2 - moved further left */
+        
+        .carousel-item:nth-child(5) { left: 0px; }      /* hyp3 refraction 1 - increased spacing */
+        .carousel-item:nth-child(2) { left: 15px; }      /* hyp3 - increased spacing */
+        .carousel-item:nth-child(8) { left: 30px; }      /* hyp3 refraction 2 - increased spacing */
+        
+        .carousel-item:nth-child(6) { left: 335px; }     /* hyp2 refraction 1 - increased spacing */
+        .carousel-item:nth-child(3) { left: 350px; }     /* hyp2 - increased spacing */
+        .carousel-item:nth-child(9) { left: 365px; }     /* hyp2 refraction 2 - increased spacing */
+
+    </style>
+</head>
+<body>
+    <!-- Toggle Container -->
+<div class="toggle-container">
+    <button class="toggle-btn active" id="glassToggle">Show Glass</button>
+</div>
+
+<!-- Image Carousel with Multiple Layers for Lens Refraction -->
+    <div class="carousel-container">
+        <!-- Base Layer - Original Position -->
+        <div class="carousel-item base-layer">
+            <img src="hyp1.webp" alt="Hyper-realistic image 1">
+        </div>
+        <div class="carousel-item base-layer">
+            <img src="hyp3.webp" alt="Hyper-realistic image 3">
+        </div>
+        <div class="carousel-item base-layer">
+            <img src="hyp2.webp" alt="Hyper-realistic image 2">
+        </div>
+        
+        <!-- Refraction Layer 1 - Slight Left Offset -->
+        <div class="carousel-item refraction-layer-1">
+            <img src="hyp1.webp" alt="Hyper-realistic image 1">
+        </div>
+        <div class="carousel-item refraction-layer-1">
+            <img src="hyp3.webp" alt="Hyper-realistic image 3">
+        </div>
+        <div class="carousel-item refraction-layer-1">
+            <img src="hyp2.webp" alt="Hyper-realistic image 2">
+        </div>
+        
+        <!-- Refraction Layer 2 - Slight Right Offset -->
+        <div class="carousel-item refraction-layer-2">
+            <img src="hyp1.webp" alt="Hyper-realistic image 1">
+        </div>
+        <div class="carousel-item refraction-layer-2">
+            <img src="hyp3.webp" alt="Hyper-realistic image 3">
+        </div>
+        <div class="carousel-item refraction-layer-2">
+            <img src="hyp2.webp" alt="Hyper-realistic image 2">
+        </div>
+    </div>
+
+    <!-- Physics-Based Fluted Glass -->
+    <div class="physics-fluted-glass" id="flutedGlass">
+        <div class="specular-ribbon"></div>
+    </div>
+
+    <script>
+        // Get controls
+        const blurAmount = document.getElementById('blurAmount');
+        const blurAmountValue = document.getElementById('blurAmountValue');
+
+        // Get glass component
+        const flutedGlass = document.getElementById('flutedGlass');
+        
+        // Get toggle button
+        const glassToggle = document.getElementById('glassToggle');
+
+        // Toggle glass visibility
+        function toggleGlass() {
+            const refractionLayers = document.querySelectorAll('.refraction-layer-1, .refraction-layer-2');
+            
+            if (flutedGlass.classList.contains('hidden')) {
+                flutedGlass.classList.remove('hidden');
+                glassToggle.textContent = 'Hide Glass';
+                glassToggle.classList.add('active');
+                // Show refraction layers
+                refractionLayers.forEach(layer => {
+                    layer.style.opacity = '0.3';
+                });
+            } else {
+                flutedGlass.classList.add('hidden');
+                glassToggle.textContent = 'Show Glass';
+                glassToggle.classList.remove('active');
+                // Hide refraction layers
+                refractionLayers.forEach(layer => {
+                    layer.style.opacity = '0';
+                });
+            }
+        }
+
+        // Update blur function
+        function updateBlurAmount() {
+            const value = blurAmount.value + 'px';
+            blurAmountValue.textContent = value;
+            
+            // Update physics fluted glass with anisotropic blur
+            if (flutedGlass) {
+                flutedGlass.style.backdropFilter = `blur(${parseInt(value) * 1.5}px) saturate(1.15), blur(${parseInt(value) * 0.4}px) brightness(1.1)`;
+                flutedGlass.style.webkitBackdropFilter = `blur(${parseInt(value) * 1.5}px) saturate(1.15), blur(${parseInt(value) * 0.4}px) brightness(1.1)`;
+            }
+        }
+
+        // Add event listeners
+        glassToggle.addEventListener('click', toggleGlass);
+        if (blurAmount) {
+            blurAmount.addEventListener('input', updateBlurAmount);
+            // Initialize blur value
+            updateBlurAmount();
+        }
+    </script>
+</body>
+</html>

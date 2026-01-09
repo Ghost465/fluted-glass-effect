@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shader-Based Fluted Glass</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000000;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Toggle Container */
+        .toggle-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 25px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .toggle-btn {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .toggle-btn.active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.6);
+            transform: scale(1.05);
+        }
+
+        .toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Canvas Container */
+        .canvas-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 1200px;
+            height: 600px;
+            z-index: 100;
+        }
+
+        #glassCanvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 24px;
+        }
+
+        /* Controls */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 15px;
+            display: flex;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            color: white;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .control-group input[type="range"] {
+            width: 150px;
+        }
+
+        .control-group span {
+            color: white;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Toggle Container -->
+    <div class="toggle-container">
+        <button class="toggle-btn active" id="glassToggle">Show Glass</button>
+    </div>
+
+    <!-- Canvas Container -->
+    <div class="canvas-container">
+        <canvas id="glassCanvas"></canvas>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+        <div class="control-group">
+            <label>Flute Intensity</label>
+            <input type="range" id="fluteIntensity" min="0" max="1" step="0.01" value="0">
+            <span id="fluteIntensityValue">0</span>
+        </div>
+        <div class="control-group">
+            <label>Blur Amount</label>
+            <input type="range" id="blurAmount" min="0" max="10" step="0.1" value="10">
+            <span id="blurAmountValue">10</span>
+        </div>
+    </div>
+
+    <script>
+        // Vertex Shader - Creates physical flute geometry per image
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            attribute vec2 a_texCoord;
+            varying vec2 v_texCoord;
+            varying float v_fluteDepth;
+            varying float v_fluteIntensity;
+            varying vec2 v_imageSection;
+            
+            uniform float u_fluteIntensity;
+            
+            void main() {
+                vec2 position = a_position;
+                vec2 texCoord = a_texCoord;
+                
+                // Determine which image section we're in (0, 1, or 2)
+                float imageIndex = floor(texCoord.x * 3.0);
+                v_imageSection = vec2(imageIndex, 0.0);
+                
+                // Create independent flute geometry for each image
+                float frequency = 0.3; // Fixed frequency
+                float localX = fract(texCoord.x * 3.0); // Local X within each image
+                
+                // Simple flute pattern
+                float flute = sin(localX * frequency * 3.14159 * 2.0) * u_fluteIntensity;
+                
+                // Offset vertices to create physical flute shape
+                position.y += flute * 0.05; // Fixed depth
+                
+                gl_Position = vec4(position, 0.0, 1.0);
+                v_texCoord = texCoord;
+                v_fluteDepth = flute;
+                v_fluteIntensity = u_fluteIntensity;
+            }
+        `;
+
+        // Fragment Shader - Physics-based fluted glass per image
+        const fragmentShaderSource = `
+            precision mediump float;
+            
+            uniform sampler2D u_image;
+            uniform vec2 u_resolution;
+            uniform float u_time;
+            uniform float u_fluteIntensity;
+            uniform float u_blurAmount;
+            uniform float u_opacity;
+            
+            varying vec2 v_texCoord;
+            varying float v_fluteDepth;
+            varying float v_fluteIntensity;
+            varying vec2 v_imageSection;
+            
+            // Cylindrical lens refraction based on independent flute geometry
+            vec2 lensRefraction(vec2 uv, float flute, float intensity) {
+                // Use local X coordinate within each image for gradient calculation
+                float localX = fract(uv.x * 3.0);
+                
+                // More precise gradient calculation with higher frequency
+                float gradient = cos(localX * 0.3 * 3.14159 * 2.0) * 0.3 * 3.14159 * 2.0;
+                
+                // Create more precise normal vector
+                vec2 normal = normalize(vec2(gradient, 1.0));
+                
+                // Enhanced horizontal diffusion with fixed refraction strength
+                float horizontalOffset = normal.x * flute * 10.0 * intensity; // Fixed strength
+                float verticalOffset = normal.y * flute * 4.0 * intensity; // Fixed strength
+                
+                // Add sub-pixel precision to eliminate pixel visibility
+                vec2 refracted = uv + vec2(horizontalOffset, verticalOffset);
+                
+                // Add additional horizontal diffusion for smoother effect
+                float diffusionAmount = abs(flute) * 16.0; // Fixed strength
+                refracted.x += sin(localX * 3.14159 * 4.0) * diffusionAmount;
+                
+                return refracted;
+            }
+            
+            // Enhanced Gaussian blur with sub-pixel precision
+            vec4 gaussianBlur(sampler2D tex, vec2 uv, float blur) {
+                vec4 color = vec4(0.0);
+                float total = 0.0;
+                
+                // Larger kernel for smoother blur
+                for(float x = -6.0; x <= 6.0; x++) {
+                    for(float y = -6.0; y <= 6.0; y++) {
+                        // Sub-pixel offset for precision
+                        vec2 offset = vec2(x, y) * blur * 0.0008;
+                        
+                        // Gaussian weight with better distribution
+                        float weight = exp(-(x*x + y*y) / 12.0);
+                        
+                        // Add sub-pixel sampling to eliminate pixelation
+                        vec2 sampleUV = uv + offset;
+                        color += texture2D(tex, sampleUV) * weight;
+                        total += weight;
+                    }
+                }
+                
+                return color / total;
+            }
+            
+            void main() {
+                vec2 uv = v_texCoord;
+                
+                // Use flute depth and intensity from vertex shader
+                float flute = v_fluteDepth;
+                float intensity = v_fluteIntensity;
+                
+                // Apply lens refraction based on independent flute shape
+                vec2 refractedUV = lensRefraction(uv, flute, intensity);
+                
+                // Sample background with refraction
+                vec4 refractedColor = texture2D(u_image, refractedUV);
+                
+                // Apply blur based on flute depth
+                float blurAmount = u_blurAmount * (1.0 - abs(flute));
+                vec4 blurredColor = gaussianBlur(u_image, refractedUV, blurAmount);
+                
+                // Mix refracted and blurred based on flute depth
+                vec4 finalColor = mix(refractedColor, blurredColor, blurAmount * 0.1);
+                
+                // Apply opacity
+                finalColor.a = u_opacity;
+                
+                // Add subtle fresnel effect based on physical flute depth
+                float fresnel = pow(1.0 - abs(flute), 2.0) * 0.1 * intensity;
+                finalColor.rgb += vec3(fresnel);
+                
+                gl_FragColor = finalColor;
+            }
+        `;
+
+        // WebGL setup
+        let gl, program, imageTexture;
+        let glassVisible = true;
+
+        function initWebGL() {
+            const canvas = document.getElementById('glassCanvas');
+            gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            
+            if (!gl) {
+                console.error('WebGL not supported');
+                return;
+            }
+
+            // Set canvas size
+            canvas.width = 1200;
+            canvas.height = 600;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            // Create shaders
+            const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+            // Create program
+            program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program link failed:', gl.getProgramInfoLog(program));
+                return;
+            }
+
+            // Set up geometry
+            const positions = new Float32Array([
+                -1, -1,
+                 1, -1,
+                -1,  1,
+                 1,  1,
+            ]);
+
+            const texCoords = new Float32Array([
+                0, 1,
+                1, 1,
+                0, 0,
+                1, 0,
+            ]);
+
+            // Position buffer
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+            const positionLocation = gl.getAttribLocation(program, 'a_position');
+            gl.enableVertexAttribArray(positionLocation);
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+            // Texture coordinate buffer
+            const texCoordBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+
+            const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+            gl.enableVertexAttribArray(texCoordLocation);
+            gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+            // Create background texture
+            createBackgroundTexture();
+
+            // Start rendering
+            render();
+        }
+
+        function createShader(type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compile failed:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+
+            return shader;
+        }
+
+        function createBackgroundTexture() {
+            // Create a canvas with all 3 images side by side
+            const canvas = document.createElement('canvas');
+            canvas.width = 1200; // 3 images * 400px each
+            canvas.height = 600;
+            const ctx = canvas.getContext('2d');
+            
+            let loadedImages = 0;
+            const images = [
+                { src: 'hyp1.webp', x: 0 },
+                { src: 'hyp3.webp', x: 400 },
+                { src: 'hyp2.webp', x: 800 }
+            ];
+            
+            images.forEach((imgInfo, index) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = function() {
+                    // Calculate dimensions to fit within 400x600 area without stretching
+                    const maxWidth = 400;
+                    const maxHeight = 600;
+                    
+                    const imgAspect = img.width / img.height;
+                    const containerAspect = maxWidth / maxHeight;
+                    
+                    let drawWidth, drawHeight, drawX, drawY;
+                    
+                    if (imgAspect > containerAspect) {
+                        // Image is wider than container - fit to width
+                        drawWidth = maxWidth;
+                        drawHeight = drawWidth / imgAspect;
+                        drawX = imgInfo.x;
+                        drawY = (maxHeight - drawHeight) / 2;
+                    } else {
+                        // Image is taller than container - fit to height
+                        drawHeight = maxHeight;
+                        drawWidth = drawHeight * imgAspect;
+                        drawX = imgInfo.x + (maxWidth - drawWidth) / 2;
+                        drawY = 0;
+                    }
+                    
+                    // Draw image with proper aspect ratio within bounds
+                    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+                    
+                    loadedImages++;
+                    if (loadedImages === 3) {
+                        // All images loaded, create WebGL texture
+                        imageTexture = gl.createTexture();
+                        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+                        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    }
+                };
+                img.src = imgInfo.src;
+            });
+        }
+
+        function render() {
+            if (!gl || !program) return;
+
+            gl.useProgram(program);
+
+            // Set uniforms
+            const resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
+            gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
+
+            const timeLocation = gl.getUniformLocation(program, 'u_time');
+            gl.uniform1f(timeLocation, performance.now() * 0.001);
+
+            const fluteIntensityLocation = gl.getUniformLocation(program, 'u_fluteIntensity');
+            const fluteIntensity = glassVisible ? parseFloat(document.getElementById('fluteIntensity').value) : 0.0;
+            gl.uniform1f(fluteIntensityLocation, fluteIntensity);
+
+            const blurAmountLocation = gl.getUniformLocation(program, 'u_blurAmount');
+            const blurAmount = glassVisible ? parseFloat(document.getElementById('blurAmount').value) : 0.0;
+            gl.uniform1f(blurAmountLocation, blurAmount);
+
+            const opacityLocation = gl.getUniformLocation(program, 'u_opacity');
+            gl.uniform1f(opacityLocation, glassVisible ? 0.8 : 1.0);
+
+            // Bind texture
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+            const imageLocation = gl.getUniformLocation(program, 'u_image');
+            gl.uniform1i(imageLocation, 0);
+
+            // Draw
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            requestAnimationFrame(render);
+        }
+
+        // Toggle glass visibility
+        function toggleGlass() {
+            glassVisible = !glassVisible;
+            const toggle = document.getElementById('glassToggle');
+            toggle.textContent = glassVisible ? 'Hide Glass' : 'Show Glass';
+            toggle.classList.toggle('active', glassVisible);
+        }
+
+        // Update control displays
+        function updateControls() {
+            document.getElementById('fluteIntensityValue').textContent = document.getElementById('fluteIntensity').value;
+            document.getElementById('blurAmountValue').textContent = document.getElementById('blurAmount').value;
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            initWebGL();
+            
+            document.getElementById('glassToggle').addEventListener('click', toggleGlass);
+            document.getElementById('fluteIntensity').addEventListener('input', updateControls);
+            document.getElementById('blurAmount').addEventListener('input', updateControls);
+            
+            updateControls();
+        });
+    </script>
+</body>
+</html>
