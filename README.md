@@ -77,11 +77,23 @@ float horizontalOffset = normal.x * flute * 10.0 * intensity;
 ### Before & After Comparisons
 
 #### CSS Implementation
-![CSS Before](snapshots/css_before.png)
-*Before: Standard glass effect with basic blur*
 
-![CSS After](snapshots/css_after.png)
-*After: Realistic fluted glass with directional distortion and depth*
+<div align="center">
+  <table>
+    <tr>
+      <th style="text-align: center;">Before</th>
+      <th style="text-align: center;">After</th>
+    </tr>
+    <tr>
+      <td><img src="snapshots/css_before.png" alt="CSS Before" width="400"></td>
+      <td><img src="snapshots/css_after.png" alt="CSS After" width="400"></td>
+    </tr>
+    <tr>
+      <td style="text-align: center; font-style: italic;">Standard glass effect with basic blur</td>
+      <td style="text-align: center; font-style: italic;">Realistic fluted glass with directional distortion and depth</td>
+    </tr>
+  </table>
+</div>
 
 **CSS Implementation Details:**
 - **Before**: Simple backdrop-filter blur with minimal distortion
@@ -92,11 +104,23 @@ float horizontalOffset = normal.x * flute * 10.0 * intensity;
   - Depth simulation through perspective transforms
 
 #### Shader Implementation  
-![Shader Before](snapshots/shader_before.png)
-*Before: Flat image rendering with no glass effect*
 
-![Shader After](snapshots/shader_after.png)
-*After: Physics-based light refraction through cylindrical lenses*
+<div align="center">
+  <table>
+    <tr>
+      <th style="text-align: center;">Before</th>
+      <th style="text-align: center;">After</th>
+    </tr>
+    <tr>
+      <td><img src="snapshots/shader_before.png" alt="Shader Before" width="400"></td>
+      <td><img src="snapshots/shader_after.png" alt="Shader After" width="400"></td>
+    </tr>
+    <tr>
+      <td style="text-align: center; font-style: italic;">Flat image rendering with no glass effect</td>
+      <td style="text-align: center; font-style: italic;">Physics-based light refraction through cylindrical lenses</td>
+    </tr>
+  </table>
+</div>
 
 **Shader Implementation Details:**
 - **Before**: Direct image rendering with standard WebGL texture mapping
